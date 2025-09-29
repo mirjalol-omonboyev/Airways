@@ -1,0 +1,550 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// User model moved to expanded section below
+
+model Airline {
+    id        String   @id @default(cuid())
+    name      String   @unique
+    code      String   @unique // IATA code (e.g., "AA" for American Airlines)
+    logo      String?
+    website   String?
+    country   String
+    isActive  Boolean  @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations
+    flights Flight[]
+
+    @@map("airlines")
+}
+
+model Airport {
+    id        String   @id @default(cuid())
+    name      String
+    code      String   @unique // IATA code (e.g., "JFK")
+    city      String
+    country   String
+    timezone  String
+    latitude  Float?
+    longitude Float?
+    isActive  Boolean  @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations
+    departureFlights Flight[] @relation("DepartureAirport")
+    arrivalFlights   Flight[] @relation("ArrivalAirport")
+
+    @@map("airports")
+}
+
+model Aircraft {
+    id                 String   @id @default(cuid())
+    model              String // e.g., "Boeing 737-800"
+    manufacturer       String // e.g., "Boeing"
+    totalSeats         Int
+    economySeats       Int
+    businessSeats      Int
+    firstClassSeats    Int
+    yearManufactured   Int?
+    registrationNumber String   @unique
+    isActive           Boolean  @default(true)
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+
+    // Relations
+    flights Flight[]
+
+    @@map("aircraft")
+}
+
+model Flight {
+    id                 String       @id @default(cuid())
+    flightNumber       String       @unique
+    airlineId          String
+    aircraftId         String
+    departureAirportId String
+    arrivalAirportId   String
+    departureTime      DateTime
+    arrivalTime        DateTime
+    duration           Int // Duration in minutes
+    status             FlightStatus @default(SCHEDULED)
+    economyPrice       Float
+    businessPrice      Float
+    firstClassPrice    Float
+    availableSeats     Json // { economy: number, business: number, firstClass: number }
+    createdAt          DateTime     @default(now())
+    updatedAt          DateTime     @updatedAt
+
+    // Relations
+    airline          Airline   @relation(fields: [airlineId], references: [id])
+    aircraft         Aircraft  @relation(fields: [aircraftId], references: [id])
+    departureAirport Airport   @relation("DepartureAirport", fields: [departureAirportId], references: [id])
+    arrivalAirport   Airport   @relation("ArrivalAirport", fields: [arrivalAirportId], references: [id])
+    bookings         Booking[]
+
+    @@map("flights")
+}
+
+model Booking {
+    id               String        @id @default(cuid())
+    bookingReference String        @unique
+    userId           String
+    flightId         String
+    totalAmount      Float
+    status           BookingStatus @default(PENDING)
+    paymentStatus    PaymentStatus @default(PENDING)
+    paymentMethod    String?
+    paymentId        String?
+    bookingDate      DateTime      @default(now())
+    createdAt        DateTime      @default(now())
+    updatedAt        DateTime      @updatedAt
+
+    // Relations
+    user       User        @relation(fields: [userId], references: [id])
+    flight     Flight      @relation(fields: [flightId], references: [id])
+    passengers Passenger[]
+    payment    Payment?
+
+    @@map("bookings")
+}
+
+model Passenger {
+    id              String    @id @default(cuid())
+    bookingId       String
+    userId          String? // Optional: if registered user
+    firstName       String
+    lastName        String
+    dateOfBirth     DateTime
+    passportNumber  String
+    nationality     String
+    seatClass       SeatClass
+    seatNumber      String?
+    specialRequests String?
+    createdAt       DateTime  @default(now())
+    updatedAt       DateTime  @updatedAt
+
+    // Relations
+    booking Booking @relation(fields: [bookingId], references: [id])
+    user    User?   @relation(fields: [userId], references: [id])
+
+    @@map("passengers")
+}
+
+// Payment model moved to expanded section below
+
+// ===== EXPANDED BOOKING SYSTEM =====
+
+model Hotel {
+    id          String   @id @default(cuid())
+    name        String
+    description String?
+    address     String
+    city        String
+    country     String
+    rating      Float?   @default(0)
+    amenities   Json?    // ["WiFi", "Pool", "Gym", etc.]
+    images      Json?    // Array of image URLs
+    isActive    Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    rooms        HotelRoom[]
+    bookings     HotelBooking[]
+
+    @@map("hotels")
+}
+
+model HotelRoom {
+    id          String  @id @default(cuid())
+    hotelId     String
+    roomType    String  // "Single", "Double", "Suite"
+    description String?
+    pricePerNight Float
+    capacity    Int
+    amenities   Json?   // Room-specific amenities
+    images      Json?
+    isActive    Boolean @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    hotel    Hotel          @relation(fields: [hotelId], references: [id])
+    bookings HotelBooking[]
+
+    @@map("hotel_rooms")
+}
+
+model HotelBooking {
+    id               String        @id @default(cuid())
+    bookingReference String        @unique
+    userId           String
+    hotelId          String
+    roomId           String
+    checkInDate      DateTime
+    checkOutDate     DateTime
+    guests           Int
+    totalAmount      Float
+    status           BookingStatus @default(PENDING)
+    paymentStatus    PaymentStatus @default(PENDING)
+    specialRequests  String?
+    createdAt        DateTime      @default(now())
+    updatedAt        DateTime      @updatedAt
+
+    // Relations
+    user   User      @relation(fields: [userId], references: [id])
+    hotel  Hotel     @relation(fields: [hotelId], references: [id])
+    room   HotelRoom @relation(fields: [roomId], references: [id])
+    payment Payment? @relation("HotelPayment")
+
+    @@map("hotel_bookings")
+}
+
+model CarRental {
+    id           String   @id @default(cuid())
+    brand        String   // "Toyota", "BMW"
+    model        String   // "Camry", "X5"
+    year         Int
+    category     String   // "Economy", "Luxury", "SUV"
+    transmission String   // "Manual", "Automatic"
+    fuelType     String   // "Petrol", "Diesel", "Electric"
+    seats        Int
+    pricePerDay  Float
+    location     String   // Pickup location
+    features     Json?    // ["GPS", "Bluetooth", etc.]
+    images       Json?
+    isActive     Boolean  @default(true)
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    // Relations
+    bookings CarBooking[]
+
+    @@map("car_rentals")
+}
+
+model CarBooking {
+    id               String        @id @default(cuid())
+    bookingReference String        @unique
+    userId           String
+    carId            String
+    pickupDate       DateTime
+    returnDate       DateTime
+    pickupLocation   String
+    returnLocation   String
+    totalAmount      Float
+    status           BookingStatus @default(PENDING)
+    paymentStatus    PaymentStatus @default(PENDING)
+    driverLicense    String
+    createdAt        DateTime      @default(now())
+    updatedAt        DateTime      @updatedAt
+
+    // Relations
+    user    User       @relation(fields: [userId], references: [id])
+    car     CarRental  @relation(fields: [carId], references: [id])
+    payment Payment?   @relation("CarPayment")
+
+    @@map("car_bookings")
+}
+
+model TourPackage {
+    id          String   @id @default(cuid())
+    title       String
+    description String
+    destination String
+    duration    Int      // Duration in days
+    price       Float
+    maxGroupSize Int
+    includes    Json?    // ["Accommodation", "Meals", "Transport"]
+    excludes    Json?
+    itinerary   Json?    // Day-by-day schedule
+    images      Json?
+    difficulty  String?  // "Easy", "Moderate", "Hard"
+    category    String   // "Adventure", "Cultural", "Relaxation"
+    isActive    Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    bookings TourBooking[]
+
+    @@map("tour_packages")
+}
+
+model TourBooking {
+    id               String        @id @default(cuid())
+    bookingReference String        @unique
+    userId           String
+    tourId           String
+    startDate        DateTime
+    travelers        Int
+    totalAmount      Float
+    status           BookingStatus @default(PENDING)
+    paymentStatus    PaymentStatus @default(PENDING)
+    specialRequests  String?
+    createdAt        DateTime      @default(now())
+    updatedAt        DateTime      @updatedAt
+
+    // Relations
+    user    User        @relation(fields: [userId], references: [id])
+    tour    TourPackage @relation(fields: [tourId], references: [id])
+    payment Payment?    @relation("TourPayment")
+
+    @@map("tour_bookings")
+}
+
+model Insurance {
+    id          String   @id @default(cuid())
+    name        String
+    type        String   // "Travel", "Health", "Cancellation"
+    description String
+    coverage    Json     // Coverage details
+    price       Float
+    duration    Int      // Coverage duration in days
+    isActive    Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relations
+    bookings InsuranceBooking[]
+
+    @@map("insurances")
+}
+
+model InsuranceBooking {
+    id               String        @id @default(cuid())
+    bookingReference String        @unique
+    userId           String
+    insuranceId      String
+    startDate        DateTime
+    endDate          DateTime
+    coverageAmount   Float
+    totalAmount      Float
+    status           BookingStatus @default(PENDING)
+    paymentStatus    PaymentStatus @default(PENDING)
+    beneficiaries    Json?         // List of beneficiaries
+    createdAt        DateTime      @default(now())
+    updatedAt        DateTime      @updatedAt
+
+    // Relations
+    user      User      @relation(fields: [userId], references: [id])
+    insurance Insurance @relation(fields: [insuranceId], references: [id])
+    payment   Payment?  @relation("InsurancePayment")
+
+    @@map("insurance_bookings")
+}
+
+// ===== REVIEW & RATING SYSTEM =====
+
+model Review {
+    id          String      @id @default(cuid())
+    userId      String
+    rating      Int         // 1-5 stars
+    title       String?
+    comment     String
+    serviceType ServiceType // What service is being reviewed
+    serviceId   String      // ID of the service (hotel, car, tour, etc.)
+    isVerified  Boolean     @default(false) // Admin verified
+    isVisible   Boolean     @default(true)
+    createdAt   DateTime    @default(now())
+    updatedAt   DateTime    @updatedAt
+
+    // Relations
+    user        User         @relation(fields: [userId], references: [id])
+
+    @@map("reviews")
+}
+
+// ===== NOTIFICATION SYSTEM =====
+
+model Notification {
+    id          String           @id @default(cuid())
+    userId      String?          // Null for admin notifications
+    title       String
+    message     String
+    type        NotificationType
+    isRead      Boolean          @default(false)
+    actionUrl   String?          // URL to redirect when clicked
+    metadata    Json?            // Additional data
+    createdAt   DateTime         @default(now())
+    updatedAt   DateTime         @updatedAt
+
+    // Relations
+    user User? @relation(fields: [userId], references: [id])
+
+    @@map("notifications")
+}
+
+// ===== ADMIN & ANALYTICS =====
+
+model AdminSettings {
+    id          String   @id @default(cuid())
+    key         String   @unique
+    value       String
+    description String?
+    category    String   // "system", "email", "payment", etc.
+    isActive    Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@map("admin_settings")
+}
+
+model SystemLog {
+    id        String    @id @default(cuid())
+    action    String    // "USER_LOGIN", "BOOKING_CREATED", etc.
+    userId    String?
+    details   Json?     // Additional log data
+    ipAddress String?
+    userAgent String?
+    createdAt DateTime  @default(now())
+
+    // Relations
+    user User? @relation(fields: [userId], references: [id])
+
+    @@map("system_logs")
+}
+
+// ===== UPDATED USER MODEL =====
+model User {
+    id                String    @id @default(cuid())
+    email             String    @unique
+    password          String
+    firstName         String
+    lastName          String
+    phoneNumber       String?
+    dateOfBirth       DateTime?
+    passportNumber    String?
+    nationality       String?
+    role              UserRole  @default(PASSENGER)
+    isEmailVerified   Boolean   @default(false)
+    emailVerifiedAt   DateTime?
+    lastLoginAt       DateTime?
+    isActive          Boolean   @default(true)
+    preferences       Json?     // User preferences
+    createdAt         DateTime  @default(now())
+    updatedAt         DateTime  @updatedAt
+
+    // Relations
+    bookings          Booking[]
+    passengers        Passenger[]
+    hotelBookings     HotelBooking[]
+    carBookings       CarBooking[]
+    tourBookings      TourBooking[]
+    insuranceBookings InsuranceBooking[]
+    reviews           Review[]
+    notifications     Notification[]
+    systemLogs        SystemLog[]
+
+    @@map("users")
+}
+
+// ===== UPDATED PAYMENT MODEL =====
+model Payment {
+    id                String        @id @default(cuid())
+    bookingId         String?       @unique
+    hotelBookingId    String?       @unique
+    carBookingId      String?       @unique
+    tourBookingId     String?       @unique
+    insuranceBookingId String?      @unique
+    amount            Float
+    currency          String        @default("USD")
+    paymentMethod     PaymentMethod
+    paymentProvider   String        // e.g., "stripe", "paypal"
+    providerPaymentId String?       // Payment ID from provider
+    status            PaymentStatus @default(PENDING)
+    paidAt            DateTime?
+    createdAt         DateTime      @default(now())
+    updatedAt         DateTime      @updatedAt
+
+    // Relations
+    booking           Booking?          @relation(fields: [bookingId], references: [id])
+    hotelBooking      HotelBooking?     @relation("HotelPayment", fields: [hotelBookingId], references: [id])
+    carBooking        CarBooking?       @relation("CarPayment", fields: [carBookingId], references: [id])
+    tourBooking       TourBooking?      @relation("TourPayment", fields: [tourBookingId], references: [id])
+    insuranceBooking  InsuranceBooking? @relation("InsurancePayment", fields: [insuranceBookingId], references: [id])
+
+    @@map("payments")
+}
+
+// ===== ENUMS =====
+enum UserRole {
+    PASSENGER
+    ADMIN
+    SUPER_ADMIN
+    AIRLINE_STAFF
+    HOTEL_MANAGER
+    TOUR_OPERATOR
+}
+
+enum FlightStatus {
+    SCHEDULED
+    DELAYED
+    BOARDING
+    DEPARTED
+    IN_FLIGHT
+    ARRIVED
+    CANCELLED
+}
+
+enum BookingStatus {
+    PENDING
+    CONFIRMED
+    CANCELLED
+    COMPLETED
+    REFUNDED
+}
+
+enum PaymentStatus {
+    PENDING
+    COMPLETED
+    FAILED
+    REFUNDED
+    PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+    CREDIT_CARD
+    DEBIT_CARD
+    PAYPAL
+    BANK_TRANSFER
+    CRYPTO
+    CASH
+}
+
+enum SeatClass {
+    ECONOMY
+    BUSINESS
+    FIRST_CLASS
+}
+
+enum ServiceType {
+    FLIGHT
+    HOTEL
+    CAR_RENTAL
+    TOUR_PACKAGE
+    INSURANCE
+}
+
+enum NotificationType {
+    BOOKING_CONFIRMATION
+    PAYMENT_SUCCESS
+    PAYMENT_FAILED
+    BOOKING_CANCELLED
+    ADMIN_ALERT
+    SYSTEM_UPDATE
+    MARKETING
+    REMINDER
+}

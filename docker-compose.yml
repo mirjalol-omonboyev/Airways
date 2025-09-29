@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: airways-postgres
+    environment:
+      POSTGRES_USER: airways_user
+      POSTGRES_PASSWORD: airways_password
+      POSTGRES_DB: airways_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - airways-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airways_user -d airways_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: airways-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - airways-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Airways Backend API
+  airways-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airways-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://airways_user:airways_password@postgres:5432/airways_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRATION=7d
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:3000
+      - SEED_DATABASE=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - airways-network
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: airways-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - airways-backend
+    networks:
+      - airways-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  airways-network:
+    driver: bridge
